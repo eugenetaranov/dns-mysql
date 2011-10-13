@@ -19,45 +19,47 @@
 #       eugene@jinocloud.com
 
 import sys
-import MySQLdb
 import os.path
+import MySQLdb
 
 #### START VARIABLES ####
-TIMESPAN = 500
+TIMESPAN = 30
 DBHOST = "127.0.0.1"
 DBPORT = 3306
 DBUSER = "dnsuser"
 DBPASSWORD = "dnspassword"
 DBNAME = "dns"
-DNSCONFPATH = ""
+DNSCONFPATH = "./"
 #### END VARIABLES ####
 
-class fetchdata():
+
+class dbConnect():
     global DBHOST, DBUSER, DBPASSWORD, DBNAME, DBPORT, TIMESPAN
     
-    def __dbconnect(self, request):
+    def __init__(self):
         try:
-            conn = MySQLdb.connect (host = DBHOST,
-                            user = DBUSER,
-                            passwd = DBPASSWORD,
-                            db = DBNAME,
-                            port = DBPORT)
+            conn = MySQLdb.connect(host = DBHOST, user = DBUSER,
+                                    passwd = DBPASSWORD, db = DBNAME,
+                                    port = DBPORT)
+            self.cursor = conn.cursor()
         except MySQLdb.Error, e:
-            print "Error %d: %s" % (e.args[0], e.args[1])
+            print "Error %d: %s" % (e[0], e[1])
             sys.exit (1)
-        cursor = conn.cursor()
-        cursor.execute(request)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.commit()
-        conn.close()
-        return rows
     
+    def __del__(self):
+        self.cursor.close()
+    
+    def getdata(self,sql):
+        self.cursor.execute(sql)
+        return self.cursor.fetchall()
+
+
+class dns(dbConnect):
     def __zonefile(self, domain_id):
-        soa = self.__dbconnect("SELECT `domain`, DATE_FORMAT(`date`, '%%Y%%m%%d%%H%%i%%S'),`soa`,`admin`,`ttl`,`refresh`,`retry`,`expiry`,`min` FROM zones WHERE zoneid = %s" % domain_id)
-        records = self.__dbconnect("SELECT `subdomain`, `ttl`,`type`,`target` FROM records WHERE zoneid = %s" % domain_id)
-        srv = self.__dbconnect("SELECT `service`,`proto`,`ttl`,`priority`,`weight`,`port`,`target` FROM srv WHERE zoneid = %s" % domain_id)
-        spf = self.__dbconnect("SELECT `ttl`,`record` FROM spf WHERE zoneid = %s" % domain_id)
+        soa = self.getdata("SELECT `domain`, DATE_FORMAT(`date`, '%Y%m%d%H%i%S'),`soa`,`admin`,`ttl`,`refresh`,`retry`,`expiry`,`min` FROM zones WHERE zoneid =" + str(domain_id))
+        records = self.getdata("SELECT `subdomain`, `ttl`,`type`,`target` FROM records WHERE zoneid = %s" % domain_id)
+        srv = self.getdata("SELECT `service`,`proto`,`ttl`,`priority`,`weight`,`port`,`target` FROM srv WHERE zoneid = %s" % domain_id)
+        spf = self.getdata("SELECT `ttl`,`record` FROM spf WHERE zoneid = %s" % domain_id)
         with open(DNSCONFPATH + str(soa[0][0]) + ".zone",'w+') as f:
             f.write("$ORIGIN\t%s.\n" % soa[0][0])
             f.write("$TTL\t\t%s\n" % soa[0][4])
@@ -76,7 +78,7 @@ class fetchdata():
 
     
     def run_updates(self):
-        domains = self.__dbconnect("SELECT `zoneid` FROM zones WHERE `date` >= (NOW() - INTERVAL %s MINUTE)" % TIMESPAN)
+        domains = self.getdata("SELECT `zoneid` FROM zones WHERE `date` >= (NOW() - INTERVAL %s MINUTE)" % TIMESPAN)
         if len(domains) > 0:
             for i in domains:
                 self.__zonefile(i[0])
@@ -84,5 +86,5 @@ class fetchdata():
             sys.exit(0)
 
 
-data = fetchdata()
+data = dns()
 data.run_updates()
