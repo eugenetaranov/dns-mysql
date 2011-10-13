@@ -1,0 +1,7 @@
+This script dns.py is intended for use with mysql database scheme described in dns.sql fetching the data
+from database and generating zonefiles in BIND format.
+
+Dependencies: python-mysqldb
+
+Should you have any questions, please feel free to email at eugene@jinocloud.com
+
