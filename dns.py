@@ -21,26 +21,17 @@
 import sys
 import os.path
 import MySQLdb
-
-#### START VARIABLES ####
-TIMESPAN = 30
-DBHOST = "127.0.0.1"
-DBPORT = 3306
-DBUSER = "dnsuser"
-DBPASSWORD = "dnspassword"
-DBNAME = "dns"
-DNSCONFPATH = "./"
-#### END VARIABLES ####
-
+import json
 
 class dbConnect():
-    global DBHOST, DBUSER, DBPASSWORD, DBNAME, DBPORT, TIMESPAN
     
-    def __init__(self):
+    def __init__(self, config):
+        self.config = config
+
         try:
-            conn = MySQLdb.connect(host = DBHOST, user = DBUSER,
-                                    passwd = DBPASSWORD, db = DBNAME,
-                                    port = DBPORT)
+            conn = MySQLdb.connect(host = config['db']['dbhost'], user = config['db']['dbuser'],
+                                    passwd = config['db']['dbpassword'], db = config['db']['dbname'],
+                                    port = config['db']['dbport'])
             self.cursor = conn.cursor()
         except MySQLdb.Error, e:
             print "Error %d: %s" % (e[0], e[1])
@@ -60,7 +51,7 @@ class dns(dbConnect):
         records = self.getdata("SELECT `subdomain`, `ttl`,`type`,`target` FROM records WHERE zoneid = %s" % domain_id)
         srv = self.getdata("SELECT `service`,`proto`,`ttl`,`priority`,`weight`,`port`,`target` FROM srv WHERE zoneid = %s" % domain_id)
         spf = self.getdata("SELECT `ttl`,`record` FROM spf WHERE zoneid = %s" % domain_id)
-        with open(DNSCONFPATH + str(soa[0][0]) + ".zone",'w+') as f:
+        with open(self.config['others']['dnsconfpath'] + str(soa[0][0]) + ".zone",'w+') as f:
             f.write("$ORIGIN\t%s.\n" % soa[0][0])
             f.write("$TTL\t\t%s\n" % soa[0][4])
             f.write("%s.\tIN\tSOA\t%s. %s (\n" % (soa[0][0], soa[0][2], soa[0][3]) )
@@ -78,7 +69,7 @@ class dns(dbConnect):
 
     
     def run_updates(self):
-        domains = self.getdata("SELECT `zoneid` FROM zones WHERE `date` >= (NOW() - INTERVAL %s MINUTE)" % TIMESPAN)
+        domains = self.getdata("SELECT `zoneid` FROM zones WHERE `date` >= (NOW() - INTERVAL %s MINUTE)" % self.config['others']['timespan'])
         if len(domains) > 0:
             for i in domains:
                 self.__zonefile(i[0])
@@ -86,5 +77,14 @@ class dns(dbConnect):
             sys.exit(0)
 
 
-data = dns()
+if os.path.dirname(__file__):
+    config_file = os.path.dirname(__file__) + '/dns.conf'
+else:
+    config_file = os.path.dirname(__file__) + 'dns.conf'
+
+with open(config_file, 'r+') as config_fd:
+    config = json.load(config_fd)
+
+
+data = dns(config)
 data.run_updates()
